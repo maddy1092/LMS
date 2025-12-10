@@ -10,8 +10,31 @@ from .serializers_extra import ForgotPasswordSerializer, ResetPasswordSerializer
 from .models import EmailVerificationToken, PasswordResetToken
 from django.core.mail import send_mail
 from django.conf import settings
+from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample
 
 
+@extend_schema(
+    request=UserRegistrationSerializer,
+    responses={
+        201: OpenApiResponse(
+            description='User registered successfully',
+            examples=[
+                OpenApiExample(
+                    'Success',
+                    value={
+                        'user_id': 1,
+                        'email': 'user@example.com',
+                        'access': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...',
+                        'refresh': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...'
+                    }
+                )
+            ]
+        ),
+        400: OpenApiResponse(description='Validation errors')
+    },
+    summary='Register new user',
+    description='Create a new user account with email and profile information'
+)
 @csrf_exempt
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -29,6 +52,33 @@ def register(request):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(
+    request=UserLoginSerializer,
+    responses={
+        200: OpenApiResponse(
+            description='Login successful',
+            examples=[
+                OpenApiExample(
+                    'Success',
+                    value={
+                        'user_id': 1,
+                        'email': 'user@example.com',
+                        'access': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...',
+                        'refresh': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...',
+                        'profile': {
+                            'first_name': 'John',
+                            'last_name': 'Doe',
+                            'role_name': 'Student'
+                        }
+                    }
+                )
+            ]
+        ),
+        400: OpenApiResponse(description='Invalid credentials')
+    },
+    summary='User login',
+    description='Authenticate user and return JWT tokens'
+)
 @csrf_exempt
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -55,6 +105,27 @@ def login_view(request):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(
+    request={
+        'type': 'object',
+        'properties': {
+            'refresh': {'type': 'string', 'description': 'Refresh token to blacklist'}
+        }
+    },
+    responses={
+        200: OpenApiResponse(
+            description='Logout successful',
+            examples=[
+                OpenApiExample(
+                    'Success',
+                    value={'message': 'Successfully logged out'}
+                )
+            ]
+        )
+    },
+    summary='User logout',
+    description='Blacklist refresh token and logout user'
+)
 @api_view(['POST'])
 def logout_view(request):
     try:
@@ -84,6 +155,27 @@ def refresh_token(request):
         return Response({'error': 'Invalid token'}, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(
+    request=ChangePasswordSerializer,
+    responses={
+        200: OpenApiResponse(
+            description='Password changed successfully',
+            examples=[
+                OpenApiExample(
+                    'Success',
+                    value={
+                        'message': 'Password changed successfully',
+                        'access': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...',
+                        'refresh': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...'
+                    }
+                )
+            ]
+        ),
+        400: OpenApiResponse(description='Validation errors')
+    },
+    summary='Change password',
+    description='Change user password (requires authentication)'
+)
 @api_view(['POST'])
 def change_password(request):
     serializer = ChangePasswordSerializer(data=request.data, context={'request': request})
