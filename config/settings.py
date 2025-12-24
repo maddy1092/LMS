@@ -13,9 +13,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 DATABASE_URL = os.getenv('DATABASE_URL')
 
-print("DATABASE_URL value:", DATABASE_URL)
-print("ENV VARS:", list(os.environ.keys()))
-
+CSRF_TRUSTED_ORIGINS = [
+    "https://lms-production-26e3.up.railway.app",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
 
 # Security settings
 DEBUG = config('DEBUG', default=False, cast=bool)
