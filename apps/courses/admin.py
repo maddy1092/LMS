@@ -41,7 +41,7 @@ class CourseAdmin(admin.ModelAdmin):
         }),
         ('Course Details', {
             'fields': (
-                'teacher', 'owner', 'level', 'language', 'duration_hours',
+                'teacher', 'level', 'language', 'duration_hours',
                 'max_students', 'prerequisites', 'learning_objectives'
             )
         }),
