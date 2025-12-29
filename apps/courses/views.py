@@ -43,7 +43,7 @@ def is_student(user):
 
 
 @api_view(['GET', 'POST'])
-@permission_classes([permissions.IsAuthenticated])
+# @permission_classes([permissions.IsAuthenticated])
 def courses_list_create(request):
     """
     GET: List all published courses with filtering and search
