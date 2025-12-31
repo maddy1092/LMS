@@ -8,11 +8,11 @@ from django.db.models import Q, Avg, Count
 from django.utils import timezone
 from apps.users.models import UserProfile, Role
 from .models import (
-    Course, CourseEnrollment, CourseModule, Lesson,
+    Course, CourseEnrollment, CourseModule, Lesson, Category,
     LessonProgress, CourseReview
 )
 from .serializers import (
-    CourseListSerializer, CourseDetailSerializer, CourseCreateUpdateSerializer,
+    CourseListSerializer, CategorySerializer, CourseDetailSerializer, CourseCreateUpdateSerializer,
     CourseEnrollmentSerializer, CourseReviewSerializer, CourseReviewCreateSerializer,
     LessonProgressSerializer, CourseModuleSerializer, CourseModuleCreateUpdateSerializer,
     LessonSerializer, LessonCreateUpdateSerializer
@@ -141,7 +141,7 @@ def courses_list_create(request):
             # Filter by category
             category = request.GET.get('category', '')
             if category:
-                courses = courses.filter(category__iexact=category)
+                courses = courses.filter(categories__title__iexact=category_name)
 
             # Filter by level
             level = request.GET.get('level', '')
