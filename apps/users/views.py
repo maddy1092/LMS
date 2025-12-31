@@ -2,6 +2,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, generics, permissions
 from django.contrib.auth import get_user_model
+from apps.users.models import User, UserProfile
+
 
 class UserListView(APIView):
     def get(self, request):
@@ -45,3 +47,76 @@ class UsersByRoleView(APIView):
             })
         
         return Response({'users': data, 'count': len(data), 'role': role_name})
+
+class UserProfileView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """Get current user profile - GET request"""
+        user = request.user
+        try:
+            profile = UserProfile.objects.get(user=user)
+            data = {
+                'id': user.id,
+                'email': user.email,
+                'first_name': profile.first_name,
+                'last_name': profile.last_name,
+                'avatar': profile.avatar,
+                'phone_number': profile.phone_number,
+                'country': profile.country,
+                'language_preference': profile.language_preference,
+                'timezone': profile.timezone,
+                'role': profile.role.name if profile.role else None,
+                'date_joined': user.date_joined,
+                'is_active': user.is_active
+            }
+            return Response(data)
+        except UserProfile.DoesNotExist:
+            return Response(
+                {'error': 'Profile not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+
+class UserProfileUpdateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        """Update current user profile - POST request"""
+        user = request.user
+        try:
+            profile = UserProfile.objects.get(user=user)
+            
+            # Update user profile fields
+            allowed_fields = ['first_name', 'last_name', 'avatar', 'phone_number', 
+                             'country', 'language_preference', 'timezone']
+            
+            updated_fields = []
+            for field in allowed_fields:
+                if field in request.data:
+                    setattr(profile, field, request.data[field])
+                    updated_fields.append(field)
+            
+            if updated_fields:
+                profile.save()
+            
+            return Response({
+                'message': 'Profile updated successfully',
+                'updated_fields': updated_fields,
+                'profile': {
+                    'first_name': profile.first_name,
+                    'last_name': profile.last_name,
+                    'avatar': profile.avatar,
+                    'phone_number': profile.phone_number,
+                    'country': profile.country,
+                    'language_preference': profile.language_preference,
+                    'timezone': profile.timezone,
+                    'role': profile.role.name if profile.role else None
+                }
+            })
+            
+        except UserProfile.DoesNotExist:
+            return Response(
+                {'error': 'Profile not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
