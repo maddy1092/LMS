@@ -50,13 +50,28 @@ def is_student(user):
 @permission_classes([permissions.AllowAny])
 def categories_list_create(request):
     """
-    GET: List all active categories (Public)
+    GET: List all active categories with course counts (Public)
     POST: Create a new category (Admin only)
     """
     if request.method == 'GET':
-        categories = Category.objects.filter(is_active=True)
-        serializer = CategorySerializer(categories, many=True)
-        return Response(serializer.data)
+        categories = Category.objects.filter(is_active=True).annotate(
+            courses_count=Count('courses', filter=Q(courses__is_published=True))
+        )
+        
+        data = []
+        for category in categories:
+            data.append({
+                'id': category.id,
+                'title': category.title,
+                'icon_src': category.icon_src,
+                'description': category.description,
+                'is_active': category.is_active,
+                'courses_count': category.courses_count,
+                'created_at': category.created_at,
+                'updated_at': category.updated_at
+            })
+        
+        return Response(data)
     
     elif request.method == 'POST':
         # Only admin can create categories
