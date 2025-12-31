@@ -57,7 +57,6 @@ class Course(BaseModel):
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = slugify(self.title)
-            # Ensure unique slug
             original_slug = self.slug
             counter = 1
             while Course.objects.filter(slug=self.slug).exists():
@@ -68,14 +67,17 @@ class Course(BaseModel):
     def __str__(self):
         return self.title
     
-    @property
-    def enrolled_count(self):
-        return self.course_enrollments.filter(is_active=True).count()
+    # REMOVE THE ENROLLED_COUNT PROPERTY COMPLETELY
+    # @property
+    # def enrolled_count(self):
+    #     return self.course_enrollments.filter(is_active=True).count()
     
     @property
     def is_full(self):
         if self.max_students:
-            return self.enrolled_count >= self.max_students
+            # Calculate directly without using enrolled_count property
+            count = self.course_enrollments.filter(is_active=True).count()
+            return count >= self.max_students
         return False
 
 
@@ -169,7 +171,7 @@ class LessonProgress(models.Model):
 class CourseReview(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='reviews')
     student = models.ForeignKey(User, on_delete=models.CASCADE, related_name='course_reviews')
-    rating = models.PositiveIntegerField(choices=[(i, i) for i in range(1, 6)])  # 1-5 stars
+    rating = models.PositiveIntegerField(choices=[(i, i) for i in range(1, 6)])
     review_text = models.TextField(blank=True)
     is_published = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -181,6 +183,3 @@ class CourseReview(models.Model):
     
     def __str__(self):
         return f"{self.course.title} - {self.rating} stars by {self.student.email}"
-
-
-
