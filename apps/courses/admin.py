@@ -24,7 +24,8 @@ class CourseEnrollmentInline(admin.TabularInline):
 class CourseAdmin(admin.ModelAdmin):
     list_display = [
         'title', 'teacher', 'level', 'price', 'currency', 
-        'is_published', 'is_free', 'enrolled_count', 'created_at'
+        # 'is_published', 'is_free', 'enrolled_count', 'created_at'
+        'is_published', 'is_free', 'created_at'
     ]
     list_filter = [
         'is_published', 'is_free', 'level', 'language', 
@@ -32,7 +33,8 @@ class CourseAdmin(admin.ModelAdmin):
     ]
     search_fields = ['title', 'description', 'teacher__email', 'category', 'tags']
     prepopulated_fields = {'slug': ('title',)}
-    readonly_fields = ['enrolled_count', 'created_at', 'updated_at']
+    readonly_fields = ['created_at', 'updated_at']
+    # readonly_fields = ['enrolled_count', 'created_at', 'updated_at']
     inlines = [CourseModuleInline, CourseEnrollmentInline]
     
     fieldsets = (
@@ -55,13 +57,18 @@ class CourseAdmin(admin.ModelAdmin):
             'fields': ('is_published',)
         }),
         ('Metadata', {
-            'fields': ('enrolled_count', 'created_at', 'updated_at'),
+            'fields': ('created_at', 'updated_at'),
+            # 'fields': ('enrolled_count', 'created_at', 'updated_at'),
             'classes': ('collapse',)
         })
     )
     
+    # def enrolled_count(self, obj):
+    #     return obj.enrolled_count
+    # enrolled_count.short_description = 'Enrolled Students'
+
     def enrolled_count(self, obj):
-        return obj.enrolled_count
+        return obj.course_enrollments.filter(is_active=True).count()
     enrolled_count.short_description = 'Enrolled Students'
 
 
