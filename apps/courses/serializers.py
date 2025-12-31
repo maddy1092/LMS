@@ -32,7 +32,7 @@ class TeacherSerializer(serializers.ModelSerializer):
 class CourseListSerializer(serializers.ModelSerializer):
     teacher = TeacherSerializer(read_only=True)
     teacher_name = serializers.SerializerMethodField()
-    enrolled_count = serializers.SerializerMethodField()
+    # enrolled_count = serializers.SerializerMethodField()
     average_rating = serializers.SerializerMethodField()
     is_enrolled = serializers.SerializerMethodField()
     
@@ -41,7 +41,7 @@ class CourseListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'title', 'slug', 'description', 'teacher', 'teacher_name', 'language',
             'price', 'currency', 'is_free', 'thumbnail_url', 'level',
-            'duration_hours', 'category', 'enrolled_count', 'average_rating',
+            'duration_hours', 'category', 'average_rating',
             'is_enrolled', 'created_at', 'is_published'
         ]
     
@@ -127,7 +127,7 @@ class CourseDetailSerializer(serializers.ModelSerializer):
     teacher = TeacherSerializer(read_only=True)
     modules = CourseModuleSerializer(many=True, read_only=True)
     teacher_name = serializers.SerializerMethodField()
-    enrolled_count = serializers.SerializerMethodField()
+    # enrolled_count = serializers.SerializerMethodField()
     average_rating = serializers.SerializerMethodField()
     reviews_count = serializers.SerializerMethodField()
     is_enrolled = serializers.SerializerMethodField()
@@ -139,7 +139,8 @@ class CourseDetailSerializer(serializers.ModelSerializer):
             'id', 'title', 'slug', 'description', 'teacher', 'teacher_name', 'language',
             'price', 'currency', 'is_free', 'thumbnail_url', 'level',
             'duration_hours', 'max_students', 'prerequisites', 'learning_objectives',
-            'category', 'tags', 'enrolled_count', 'average_rating', 'reviews_count',
+            # 'category', 'tags', 'enrolled_count', 'average_rating', 'reviews_count',
+            'category', 'tags', 'average_rating', 'reviews_count',
             'is_enrolled', 'enrollment_status', 'modules',
             'created_at', 'updated_at', 'is_published'
         ]
