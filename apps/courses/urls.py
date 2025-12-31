@@ -26,4 +26,6 @@ urlpatterns = [
     path('<int:course_id>/modules/', views.course_modules, name='course-modules'),
     path('modules/<int:module_id>/', views.module_detail, name='module-detail'),
     path('modules/<int:module_id>/lessons/', views.module_lessons, name='module-lessons'),
+    path('categories/', views.categories_list_create, name='categories-list-create'),
+    path('categories/<int:pk>/', views.category_detail, name='category-detail'),
 ]

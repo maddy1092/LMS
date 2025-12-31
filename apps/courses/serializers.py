@@ -3,11 +3,21 @@ from django.contrib.auth import get_user_model
 from django.db.models import Avg
 from apps.users.models import UserProfile
 from .models import (
-    Course, CourseEnrollment, CourseModule, Lesson, 
+    Course, Category, CourseEnrollment, CourseModule, Lesson, 
     LessonProgress, CourseReview
 )
 
 User = get_user_model()
+
+class CategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Category
+        fields = ['id', 'title', 'icon_src', 'description', 'is_active']
+
+class CategoryCreateUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Category
+        fields = ['title', 'icon_src', 'description', 'is_active']
 
 
 class TeacherSerializer(serializers.ModelSerializer):
@@ -35,14 +45,22 @@ class CourseListSerializer(serializers.ModelSerializer):
     # enrolled_count = serializers.SerializerMethodField()
     average_rating = serializers.SerializerMethodField()
     is_enrolled = serializers.SerializerMethodField()
+    categories = CategorySerializer(many=True, read_only=True)
+    category_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Category.objects.filter(is_active=True),
+        many=True,
+        write_only=True,
+        required=False
+    )
+
     
     class Meta:
         model = Course
         fields = [
             'id', 'title', 'slug', 'description', 'teacher', 'teacher_name', 'language',
             'price', 'currency', 'is_free', 'thumbnail_url', 'level',
-            'duration_hours', 'category', 'average_rating',
-            'is_enrolled', 'created_at', 'is_published'
+            'duration_hours', 'categories', 'category_ids', 'average_rating',
+            'is_enrolled', 'created_at', 'is_published', 'tags'
         ]
     
     def get_enrolled_count(self, obj):
@@ -132,6 +150,7 @@ class CourseDetailSerializer(serializers.ModelSerializer):
     reviews_count = serializers.SerializerMethodField()
     is_enrolled = serializers.SerializerMethodField()
     enrollment_status = serializers.SerializerMethodField()
+    categories = CategorySerializer(many=True, read_only=True)
     
     class Meta:
         model = Course
@@ -140,9 +159,9 @@ class CourseDetailSerializer(serializers.ModelSerializer):
             'price', 'currency', 'is_free', 'thumbnail_url', 'level',
             'duration_hours', 'max_students', 'prerequisites', 'learning_objectives',
             # 'category', 'tags', 'enrolled_count', 'average_rating', 'reviews_count',
-            'category', 'tags', 'average_rating', 'reviews_count',
+            'categories', 'tags', 'average_rating', 'reviews_count',
             'is_enrolled', 'enrollment_status', 'modules',
-            'created_at', 'updated_at', 'is_published'
+            'created_at', 'updated_at', 'is_published',
         ]
     
     def get_enrolled_count(self, obj):
@@ -215,19 +234,36 @@ class CourseDetailSerializer(serializers.ModelSerializer):
 
 
 class CourseCreateUpdateSerializer(serializers.ModelSerializer):
+    category_ids = serializers.PrimaryKeyRelatedField(  # Changed from 'category'
+        queryset=Category.objects.filter(is_active=True),
+        many=True,
+        write_only=True,
+        required=False
+    )
+    
     class Meta:
         model = Course
         fields = [
             'title', 'description', 'language', 'price', 'currency',
             'is_free', 'thumbnail_url', 'level', 'duration_hours',
             'max_students', 'prerequisites', 'learning_objectives',
-            'category', 'tags', 'is_published'
+            'category_ids', 'tags', 'is_published'  # Changed from 'category'
         ]
     
     def create(self, validated_data):
+        category_ids = validated_data.pop('category_ids', [])
         request = self.context.get('request')
         validated_data['teacher'] = request.user
-        return super().create(validated_data)
+        course = super().create(validated_data)
+        course.categories.set(category_ids)  # Changed from categories
+        return course
+    
+    def update(self, instance, validated_data):
+        category_ids = validated_data.pop('category_ids', None)
+        course = super().update(instance, validated_data)
+        if category_ids is not None:
+            course.categories.set(category_ids)
+        return course
 
 
 class CourseEnrollmentSerializer(serializers.ModelSerializer):

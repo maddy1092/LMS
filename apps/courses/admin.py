@@ -1,6 +1,6 @@
 from django.contrib import admin
 from .models import (
-    Course, CourseEnrollment, CourseModule, Lesson, 
+    Course, Category, CourseEnrollment, CourseModule, Lesson, 
     LessonProgress, CourseReview
 )
 
@@ -20,6 +20,14 @@ class CourseEnrollmentInline(admin.TabularInline):
     readonly_fields = ['enrolled_at', 'progress_percentage']
 
 
+@admin.register(Category)
+class CategoryAdmin(admin.ModelAdmin):
+    list_display = ['title', 'icon_src', 'is_active', 'created_at']
+    list_filter = ['is_active']
+    search_fields = ['title', 'description']
+    list_editable = ['is_active']
+
+
 @admin.register(Course)
 class CourseAdmin(admin.ModelAdmin):
     list_display = [
@@ -29,9 +37,9 @@ class CourseAdmin(admin.ModelAdmin):
     ]
     list_filter = [
         'is_published', 'is_free', 'level', 'language', 
-        'currency', 'category', 'created_at'
+        'currency', 'categories', 'created_at'
     ]
-    search_fields = ['title', 'description', 'teacher__email', 'category', 'tags']
+    search_fields = ['title', 'description', 'teacher__email', 'categories', 'tags']
     prepopulated_fields = {'slug': ('title',)}
     readonly_fields = ['created_at', 'updated_at']
     # readonly_fields = ['enrolled_count', 'created_at', 'updated_at']
@@ -39,7 +47,7 @@ class CourseAdmin(admin.ModelAdmin):
     
     fieldsets = (
         ('Basic Information', {
-            'fields': ('title', 'slug', 'description', 'category', 'tags')
+            'fields': ('title', 'slug', 'description', 'categories', 'tags')
         }),
         ('Course Details', {
             'fields': (

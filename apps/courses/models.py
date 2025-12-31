@@ -5,6 +5,20 @@ from apps.core.models import BaseModel
 
 User = get_user_model()
 
+class Category(BaseModel):
+    """Course category model"""
+    title = models.CharField(max_length=100, unique=True)
+    icon_src = models.CharField(max_length=200, blank=True, null=True, help_text="URL or path to icon")
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    
+    class Meta:
+        verbose_name_plural = "Categories"
+        ordering = ['title']
+    
+    def __str__(self):
+        return self.title
+
 
 class Course(BaseModel):
     LEVEL_CHOICES = [
@@ -47,7 +61,7 @@ class Course(BaseModel):
     max_students = models.PositiveIntegerField(null=True, blank=True)
     prerequisites = models.TextField(blank=True)
     learning_objectives = models.TextField(blank=True)
-    category = models.CharField(max_length=100, blank=True)
+    categories = models.ManyToManyField('Category', related_name='courses', blank=True)
     tags = models.CharField(max_length=500, blank=True)
     is_free = models.BooleanField(default=False)
     

@@ -45,6 +45,77 @@ def is_student(user):
 
 # ============ PUBLIC VIEWS ============
 
+# Category views
+@api_view(['GET', 'POST'])
+@permission_classes([permissions.AllowAny])
+def categories_list_create(request):
+    """
+    GET: List all active categories (Public)
+    POST: Create a new category (Admin only)
+    """
+    if request.method == 'GET':
+        categories = Category.objects.filter(is_active=True)
+        serializer = CategorySerializer(categories, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == 'POST':
+        # Only admin can create categories
+        if not request.user.is_authenticated or not request.user.is_staff:
+            return Response(
+                {'error': 'Only admin can create categories'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = CategoryCreateUpdateSerializer(data=request.data)
+        if serializer.is_valid():
+            category = serializer.save()
+            return Response(
+                CategorySerializer(category).data,
+                status=status.HTTP_201_CREATED
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([permissions.AllowAny])
+def category_detail(request, pk):
+    """
+    GET: Get category details (Public)
+    PUT: Update category (Admin only)
+    DELETE: Delete category (Admin only)
+    """
+    category = get_object_or_404(Category, pk=pk)
+    
+    if request.method == 'GET':
+        serializer = CategorySerializer(category)
+        return Response(serializer.data)
+    
+    elif request.method == 'PUT':
+        if not request.user.is_authenticated or not request.user.is_staff:
+            return Response(
+                {'error': 'Only admin can update categories'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = CategoryCreateUpdateSerializer(category, data=request.data, partial=True)
+        if serializer.is_valid():
+            category = serializer.save()
+            return Response(CategorySerializer(category).data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'DELETE':
+        if not request.user.is_authenticated or not request.user.is_staff:
+            return Response(
+                {'error': 'Only admin can delete categories'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        category.delete()
+        return Response(
+            {'message': 'Category deleted successfully'},
+            status=status.HTTP_204_NO_CONTENT
+        )
+
 @api_view(['GET', 'POST'])
 @permission_classes([permissions.AllowAny])
 def courses_list_create(request):
