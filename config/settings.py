@@ -29,7 +29,7 @@ if not SECRET_KEY:
 try:
     ALLOWED_HOSTS = config('ALLOWED_HOSTS', cast=lambda v: [s.strip() for s in v.split(',')])
 except:
-    ALLOWED_HOSTS = ['localhost', '127.0.0.1'] if DEBUG else []
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1', '*'] if DEBUG else []
 
 DJANGO_APPS = [
     'django.contrib.admin',
@@ -162,10 +162,39 @@ SIMPLE_JWT = {
     'USER_ID_FIELD': 'id',
     'USER_ID_CLAIM': 'user_id',
 }
+CORS_ALLOW_ALL_ORIGINS = True  # For development - allows all origins
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost:3000",
+#     "http://127.0.0.1:3000",
+#     "https://lms-production-26e3.up.railway.app",
+# ]
+
+# Allow credentials if needed
+CORS_ALLOW_CREDENTIALS = True
+
+
+# Allow specific headers
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+# Allow specific methods
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
 ]
 
 # Security settings
