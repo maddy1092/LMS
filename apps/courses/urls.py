@@ -7,6 +7,7 @@ urlpatterns = [
     # Course CRUD
     path('categories/', views.categories_list_create, name='categories-list-create'),
     path('categories/<int:pk>/', views.category_detail, name='category-detail'),
+    path('by-category/', views.courses_by_category, name='courses-by-category'),
     path('', views.courses_list_create, name='courses-list-create'),
     path('<slug:slug>/', views.course_detail, name='course-detail'),
     

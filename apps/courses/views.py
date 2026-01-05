@@ -247,6 +247,154 @@ def courses_list_create(request):
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def courses_by_category(request):
+    """
+    GET: Get published courses by category/categories
+    Accepts: 
+        - Single category: ?category=web-development
+        - Multiple categories: ?category=web-development,programming,business
+    Returns: Paginated list of published courses matching the categories
+    """
+    try:
+        # Get category parameter from query string
+        category_param = request.GET.get('category', '')
+        
+        if not category_param:
+            return Response(
+                {'error': 'Category parameter is required. Use ?category=category-slug'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Split by comma to handle multiple categories
+        category_slugs = [slug.strip() for slug in category_param.split(',') if slug.strip()]
+        
+        # Get categories that exist and are active
+        categories = Category.objects.filter(
+            title__in=category_slugs,
+            is_active=True
+        )
+        
+        if not categories.exists():
+            return Response(
+                {'error': 'No valid categories found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Start with all published courses
+        courses = Course.objects.filter(is_published=True)
+        
+        # Filter by categories - adjust field name based on your model
+        # If ForeignKey: courses.filter(category__in=categories)
+        # If ManyToMany: courses.filter(categories__in=categories).distinct()
+        courses = courses.filter(categories__in=categories).distinct()
+        
+        # Search functionality
+        search = request.GET.get('search', '')
+        if search:
+            courses = courses.filter(
+                Q(title__icontains=search) |
+                Q(description__icontains=search) |
+                Q(tags__icontains=search)
+            )
+        
+        # Filter by level
+        level = request.GET.get('level', '')
+        if level:
+            courses = courses.filter(level=level)
+        
+        # Filter by language
+        language = request.GET.get('language', '')
+        if language:
+            courses = courses.filter(language=language)
+        
+        # Filter by price
+        price_filter = request.GET.get('price', '')
+        if price_filter == 'free':
+            courses = courses.filter(is_free=True)
+        elif price_filter == 'paid':
+            courses = courses.filter(is_free=False)
+        
+        # Filter by teacher
+        teacher_id = request.GET.get('teacher', '')
+        if teacher_id:
+            courses = courses.filter(teacher_id=teacher_id)
+        
+        # Sorting
+        sort_by = request.GET.get('sort', '-created_at')
+        
+        if sort_by == 'popular':
+            try:
+                courses = courses.annotate(
+                    enrollment_count=Count('course_enrollments')
+                ).order_by('-enrollment_count')
+            except Exception:
+                courses = courses.order_by('-created_at')
+        elif sort_by == 'rating':
+            try:
+                courses = courses.annotate(
+                    avg_rating=models.Avg('reviews__rating')
+                ).order_by('-avg_rating')
+            except Exception:
+                courses = courses.order_by('-created_at')
+        elif sort_by == 'price_low':
+            courses = courses.order_by('price')
+        elif sort_by == 'price_high':
+            courses = courses.order_by('-price')
+        else:
+            courses = courses.order_by(sort_by)
+        
+        # Prepare response data
+        categories_data = []
+        for cat in categories:
+            categories_data.append({
+                'id': cat.id,
+                'title': cat.title,
+                'icon_src': cat.icon_src,
+                'description': cat.description
+            })
+        
+        # Pagination
+        paginator = CoursesPagination()
+        paginated_courses = paginator.paginate_queryset(courses, request)
+        
+        # Serialize courses
+        serializer = CourseListSerializer(
+            paginated_courses,
+            many=True,
+            context={'request': request}
+        )
+        
+        # Build response
+        response_data = {
+            'categories': categories_data,
+            'courses': serializer.data,
+            'filters': {
+                'category': category_param,
+                'search': search,
+                'level': level,
+                'language': language,
+                'price': price_filter,
+                'sort': sort_by
+            },
+            'pagination': {
+                'count': paginator.page.paginator.count,
+                'next': paginator.get_next_link(),
+                'previous': paginator.get_previous_link(),
+                'current_page': paginator.page.number,
+                'total_pages': paginator.page.paginator.num_pages,
+                'page_size': paginator.get_page_size(request)
+            }
+        }
+        
+        return Response(response_data)
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e), 'detail': 'An error occurred while fetching courses'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 @api_view(['GET', 'PUT', 'DELETE'])
 @permission_classes([permissions.AllowAny])
@@ -256,7 +404,7 @@ def course_detail(request, slug):
     PUT: Update course (teacher only)
     DELETE: Delete course (teacher only)
     """
-    course = get_object_or_404(Course, slug=slug)
+    course = get_object_or_404(Course, title=slug)
 
     if request.method == 'GET':
         # Anyone can view published courses
