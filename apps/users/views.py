@@ -2,6 +2,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, generics, permissions
 from django.contrib.auth import get_user_model
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
+from drf_spectacular.types import OpenApiTypes
 from apps.users.models import User, UserProfile
 
 
@@ -16,6 +18,22 @@ class UserDetailView(APIView):
 
 class UsersByRoleView(APIView):
     permission_classes = [permissions.AllowAny]
+    
+    @extend_schema(
+        summary='Get users by role',
+        description='Get users filtered by role (Teacher or Student)',
+        parameters=[
+            OpenApiParameter('role', OpenApiTypes.STR, required=True, description='Role: Teacher or Student')
+        ],
+        responses={200: {
+            'type': 'object',
+            'properties': {
+                'users': {'type': 'array', 'items': {'type': 'object'}},
+                'count': {'type': 'integer'},
+                'role': {'type': 'string'}
+            }
+        }}
+    )
     
     def get(self, request):
         role_name = request.GET.get('role', '').capitalize()
@@ -51,6 +69,28 @@ class UsersByRoleView(APIView):
 class UserProfileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     
+    @extend_schema(
+        summary='Get user profile',
+        description='Get current user profile',
+        responses={200: {
+            'type': 'object',
+            'properties': {
+                'id': {'type': 'integer'},
+                'email': {'type': 'string'},
+                'first_name': {'type': 'string'},
+                'last_name': {'type': 'string'},
+                'avatar': {'type': 'string'},
+                'phone_number': {'type': 'string'},
+                'country': {'type': 'string'},
+                'language_preference': {'type': 'string'},
+                'timezone': {'type': 'string'},
+                'role': {'type': 'string'},
+                'date_joined': {'type': 'string'},
+                'is_active': {'type': 'boolean'}
+            }
+        }}
+    )
+    
     def get(self, request):
         """Get current user profile - GET request"""
         user = request.user
@@ -80,6 +120,31 @@ class UserProfileView(APIView):
 
 class UserProfileUpdateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    
+    @extend_schema(
+        summary='Update user profile',
+        description='Update current user profile',
+        request={
+            'type': 'object',
+            'properties': {
+                'first_name': {'type': 'string'},
+                'last_name': {'type': 'string'},
+                'avatar': {'type': 'string'},
+                'phone_number': {'type': 'string'},
+                'country': {'type': 'string'},
+                'language_preference': {'type': 'string'},
+                'timezone': {'type': 'string'}
+            }
+        },
+        responses={200: {
+            'type': 'object',
+            'properties': {
+                'message': {'type': 'string'},
+                'updated_fields': {'type': 'array', 'items': {'type': 'string'}},
+                'profile': {'type': 'object'}
+            }
+        }}
+    )
     
     def post(self, request):
         """Update current user profile - POST request"""

@@ -6,6 +6,8 @@ from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
 from django.db.models import Q, Avg, Count
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
+from drf_spectacular.types import OpenApiTypes
 from apps.users.models import UserProfile, Role
 from .models import (
     Course, CourseEnrollment, CourseModule, Lesson, Category,
@@ -15,7 +17,7 @@ from .serializers import (
     CourseListSerializer, CategorySerializer, CourseDetailSerializer, CourseCreateUpdateSerializer,
     CourseEnrollmentSerializer, CourseReviewSerializer, CourseReviewCreateSerializer,
     LessonProgressSerializer, CourseModuleSerializer, CourseModuleCreateUpdateSerializer,
-    LessonSerializer, LessonCreateUpdateSerializer
+    LessonSerializer, LessonCreateUpdateSerializer, CategoryCreateUpdateSerializer
 )
 
 
@@ -46,6 +48,19 @@ def is_student(user):
 # ============ PUBLIC VIEWS ============
 
 # Category views
+@extend_schema(
+    methods=['GET'],
+    summary='List categories',
+    description='Get all active categories with course counts',
+    responses={200: CategorySerializer(many=True)}
+)
+@extend_schema(
+    methods=['POST'],
+    summary='Create category',
+    description='Create a new category (Admin only)',
+    request=CategoryCreateUpdateSerializer,
+    responses={201: CategorySerializer}
+)
 @api_view(['GET', 'POST'])
 @permission_classes([permissions.AllowAny])
 def categories_list_create(request):
@@ -91,6 +106,25 @@ def categories_list_create(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(
+    methods=['GET'],
+    summary='Get category details',
+    description='Get category details (Public)',
+    responses={200: CategorySerializer}
+)
+@extend_schema(
+    methods=['PUT'],
+    summary='Update category',
+    description='Update category (Admin only)',
+    request=CategoryCreateUpdateSerializer,
+    responses={200: CategorySerializer}
+)
+@extend_schema(
+    methods=['DELETE'],
+    summary='Delete category',
+    description='Delete category (Admin only)',
+    responses={204: None}
+)
 @api_view(['GET', 'PUT', 'DELETE'])
 @permission_classes([permissions.AllowAny])
 def category_detail(request, pk):
@@ -131,6 +165,30 @@ def category_detail(request, pk):
             status=status.HTTP_204_NO_CONTENT
         )
 
+@extend_schema(
+    methods=['GET'],
+    summary='List courses',
+    description='Get all published courses with filtering and search',
+    parameters=[
+        OpenApiParameter('search', OpenApiTypes.STR, description='Search in title, description, tags'),
+        OpenApiParameter('category', OpenApiTypes.STR, description='Filter by category name'),
+        OpenApiParameter('level', OpenApiTypes.STR, description='Filter by level'),
+        OpenApiParameter('language', OpenApiTypes.STR, description='Filter by language'),
+        OpenApiParameter('price', OpenApiTypes.STR, description='Filter by price: free or paid'),
+        OpenApiParameter('teacher', OpenApiTypes.INT, description='Filter by teacher ID'),
+        OpenApiParameter('sort', OpenApiTypes.STR, description='Sort by: popular, rating, price_low, price_high, -created_at'),
+        OpenApiParameter('page', OpenApiTypes.INT, description='Page number'),
+        OpenApiParameter('page_size', OpenApiTypes.INT, description='Items per page')
+    ],
+    responses={200: CourseListSerializer(many=True)}
+)
+@extend_schema(
+    methods=['POST'],
+    summary='Create course',
+    description='Create a new course (Teachers only)',
+    request=CourseCreateUpdateSerializer,
+    responses={201: CourseDetailSerializer}
+)
 @api_view(['GET', 'POST'])
 @permission_classes([permissions.AllowAny])
 def courses_list_create(request):
@@ -247,6 +305,22 @@ def courses_list_create(request):
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+@extend_schema(
+    summary='Get courses by category',
+    description='Get published courses by category/categories',
+    parameters=[
+        OpenApiParameter('category', OpenApiTypes.STR, required=True, description='Single category or comma-separated categories'),
+        OpenApiParameter('search', OpenApiTypes.STR, description='Search in title, description, tags'),
+        OpenApiParameter('level', OpenApiTypes.STR, description='Filter by level'),
+        OpenApiParameter('language', OpenApiTypes.STR, description='Filter by language'),
+        OpenApiParameter('price', OpenApiTypes.STR, description='Filter by price: free or paid'),
+        OpenApiParameter('teacher', OpenApiTypes.INT, description='Filter by teacher ID'),
+        OpenApiParameter('sort', OpenApiTypes.STR, description='Sort by: popular, rating, price_low, price_high, -created_at'),
+        OpenApiParameter('page', OpenApiTypes.INT, description='Page number'),
+        OpenApiParameter('page_size', OpenApiTypes.INT, description='Items per page')
+    ],
+    responses={200: CourseListSerializer(many=True)}
+)
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
 def courses_by_category(request):
@@ -396,6 +470,25 @@ def courses_by_category(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+@extend_schema(
+    methods=['GET'],
+    summary='Get course details',
+    description='Get detailed course information',
+    responses={200: CourseDetailSerializer}
+)
+@extend_schema(
+    methods=['PUT'],
+    summary='Update course',
+    description='Update course (Teacher only)',
+    request=CourseCreateUpdateSerializer,
+    responses={200: CourseDetailSerializer}
+)
+@extend_schema(
+    methods=['DELETE'],
+    summary='Delete course',
+    description='Delete course (Teacher only)',
+    responses={204: None}
+)
 @api_view(['GET', 'PUT', 'DELETE'])
 @permission_classes([permissions.AllowAny])
 def course_detail(request, slug):
@@ -472,6 +565,19 @@ def course_detail(request, slug):
         )
 
 
+@extend_schema(
+    methods=['GET'],
+    summary='Get course reviews',
+    description='Get published reviews for a course',
+    responses={200: CourseReviewSerializer(many=True)}
+)
+@extend_schema(
+    methods=['POST'],
+    summary='Add course review',
+    description='Add a review (Enrolled students only)',
+    request=CourseReviewCreateSerializer,
+    responses={201: CourseReviewSerializer}
+)
 @api_view(['GET', 'POST'])
 @permission_classes([permissions.AllowAny])
 def course_reviews(request, course_id):
@@ -528,6 +634,19 @@ def course_reviews(request, course_id):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(
+    methods=['GET'],
+    summary='Get course modules',
+    description='Get modules for a course',
+    responses={200: CourseModuleSerializer(many=True)}
+)
+@extend_schema(
+    methods=['POST'],
+    summary='Create course module',
+    description='Create a new module (Course teacher only)',
+    request=CourseModuleCreateUpdateSerializer,
+    responses={201: CourseModuleSerializer}
+)
 @api_view(['GET', 'POST'])
 @permission_classes([permissions.AllowAny])
 def course_modules(request, course_id):
@@ -601,6 +720,25 @@ def course_modules(request, course_id):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(
+    methods=['GET'],
+    summary='Get module details',
+    description='Get module details with lessons',
+    responses={200: CourseModuleSerializer}
+)
+@extend_schema(
+    methods=['PUT'],
+    summary='Update module',
+    description='Update module (Course teacher only)',
+    request=CourseModuleCreateUpdateSerializer,
+    responses={200: CourseModuleSerializer}
+)
+@extend_schema(
+    methods=['DELETE'],
+    summary='Delete module',
+    description='Delete module (Course teacher only)',
+    responses={204: None}
+)
 @api_view(['GET', 'PUT', 'DELETE'])
 @permission_classes([permissions.AllowAny])
 def module_detail(request, module_id):
@@ -693,6 +831,19 @@ def module_detail(request, module_id):
         )
 
 
+@extend_schema(
+    methods=['GET'],
+    summary='Get module lessons',
+    description='Get lessons for a module',
+    responses={200: LessonSerializer(many=True)}
+)
+@extend_schema(
+    methods=['POST'],
+    summary='Create lesson',
+    description='Create a new lesson (Course teacher only)',
+    request=LessonCreateUpdateSerializer,
+    responses={201: LessonSerializer}
+)
 @api_view(['GET', 'POST'])
 @permission_classes([permissions.AllowAny])
 def module_lessons(request, module_id):
@@ -766,6 +917,11 @@ def module_lessons(request, module_id):
 
 # ============ PRIVATE VIEWS ============
 
+@extend_schema(
+    summary='Enroll in course',
+    description='Enroll in a course (Students only)',
+    responses={201: CourseEnrollmentSerializer}
+)
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def enroll_course(request, course_id):
@@ -801,6 +957,11 @@ def enroll_course(request, course_id):
     return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
+@extend_schema(
+    summary='Unenroll from course',
+    description='Unenroll from a course',
+    responses={200: OpenApiResponse(description='Successfully unenrolled')}
+)
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def unenroll_course(request, course_id):
@@ -824,6 +985,11 @@ def unenroll_course(request, course_id):
         )
 
 
+@extend_schema(
+    summary='Get my enrolled courses',
+    description='Get user enrolled courses',
+    responses={200: CourseEnrollmentSerializer(many=True)}
+)
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def my_courses(request):
@@ -839,6 +1005,11 @@ def my_courses(request):
     return paginator.get_paginated_response(serializer.data)
 
 
+@extend_schema(
+    summary='Get my teaching courses',
+    description='Get courses taught by the user (Teachers only)',
+    responses={200: CourseListSerializer(many=True)}
+)
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def my_teaching_courses(request):
@@ -857,6 +1028,19 @@ def my_teaching_courses(request):
     return paginator.get_paginated_response(serializer.data)
 
 
+@extend_schema(
+    summary='Update lesson progress',
+    description='Update lesson progress (Enrolled students only)',
+    request={
+        'type': 'object',
+        'properties': {
+            'completion_percentage': {'type': 'integer', 'description': 'Completion percentage (0-100)'},
+            'time_spent_minutes': {'type': 'integer', 'description': 'Time spent in minutes'},
+            'is_completed': {'type': 'boolean', 'description': 'Mark as completed'}
+        }
+    },
+    responses={200: LessonProgressSerializer}
+)
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def update_lesson_progress(request, lesson_id):
