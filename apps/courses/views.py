@@ -1,4 +1,6 @@
 from django.db import models
+from django.conf import settings
+from django.core.mail import send_mail
 from rest_framework import status, generics, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -17,7 +19,8 @@ from .serializers import (
     CourseListSerializer, CategorySerializer, CourseDetailSerializer, CourseCreateUpdateSerializer,
     CourseEnrollmentSerializer, CourseReviewSerializer, CourseReviewCreateSerializer,
     LessonProgressSerializer, CourseModuleSerializer, CourseModuleCreateUpdateSerializer,
-    LessonSerializer, LessonCreateUpdateSerializer, CategoryCreateUpdateSerializer
+    LessonSerializer, LessonCreateUpdateSerializer, CategoryCreateUpdateSerializer,
+    ContactSupportSerializer  # Add this import
 )
 
 
@@ -165,6 +168,7 @@ def category_detail(request, pk):
             status=status.HTTP_204_NO_CONTENT
         )
 
+
 @extend_schema(
     methods=['GET'],
     summary='List courses',
@@ -207,14 +211,14 @@ def courses_list_create(request):
                 courses = courses.filter(
                     Q(title__icontains=search) |
                     Q(description__icontains=search) |
-                    Q(category__icontains=search) |
+                    Q(categories__title__icontains=search) |  # FIXED: Use categories__title
                     Q(tags__icontains=search)
                 )
 
             # Filter by category
             category = request.GET.get('category', '')
             if category:
-                courses = courses.filter(categories__title__iexact=category_name)
+                courses = courses.filter(categories__title__iexact=category)  # FIXED: Use 'category' variable
 
             # Filter by level
             level = request.GET.get('level', '')
@@ -238,13 +242,13 @@ def courses_list_create(request):
             if teacher_id:
                 courses = courses.filter(teacher_id=teacher_id)
 
-            # Sorting - FIXED: Use try-except for annotations
+            # Sorting
             sort_by = request.GET.get('sort', '-created_at')
 
             if sort_by == 'popular':
                 try:
                     courses = courses.annotate(
-                        enrollment_count=models.Count('course_enrollments')
+                        enrollment_count=Count('course_enrollments')
                     ).order_by('-enrollment_count')
                 except Exception:
                     courses = courses.order_by('-created_at')
@@ -252,7 +256,7 @@ def courses_list_create(request):
             elif sort_by == 'rating':
                 try:
                     courses = courses.annotate(
-                        avg_rating=models.Avg('reviews__rating')
+                        avg_rating=Avg('reviews__rating')
                     ).order_by('-avg_rating')
                 except Exception:
                     courses = courses.order_by('-created_at')
@@ -267,21 +271,18 @@ def courses_list_create(request):
             paginator = CoursesPagination()
             paginated_courses = paginator.paginate_queryset(courses, request)
             
-            # Use serializer with context but no complex calculations initially
             serializer = CourseListSerializer(
                 paginated_courses, many=True, context={'request': request})
             
             return paginator.get_paginated_response(serializer.data)
             
         except Exception as e:
-            # Return error response if something goes wrong
             return Response(
                 {'error': str(e), 'detail': 'An error occurred while fetching courses'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
     elif request.method == 'POST':
-        # POST requires authentication - check manually
         if not request.user or not request.user.is_authenticated:
             return Response(
                 {'detail': 'Authentication credentials were not provided.'},
@@ -304,6 +305,7 @@ def courses_list_create(request):
                 status=status.HTTP_201_CREATED
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 @extend_schema(
     summary='Get courses by category',
@@ -332,7 +334,6 @@ def courses_by_category(request):
     Returns: Paginated list of published courses matching the categories
     """
     try:
-        # Get category parameter from query string
         category_param = request.GET.get('category', '')
         
         if not category_param:
@@ -341,10 +342,8 @@ def courses_by_category(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Split by comma to handle multiple categories
         category_slugs = [slug.strip() for slug in category_param.split(',') if slug.strip()]
         
-        # Get categories that exist and are active
         categories = Category.objects.filter(
             title__in=category_slugs,
             is_active=True
@@ -356,15 +355,16 @@ def courses_by_category(request):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # Start with all published courses
         courses = Course.objects.filter(is_published=True)
-        
-        # Filter by categories - adjust field name based on your model
-        # If ForeignKey: courses.filter(category__in=categories)
-        # If ManyToMany: courses.filter(categories__in=categories).distinct()
         courses = courses.filter(categories__in=categories).distinct()
+
+        courses = courses.prefetch_related(
+            'modules__lessons'
+        ).filter(
+            modules__is_published=True,
+            modules__lessons__is_published=True
+        ).distinct()
         
-        # Search functionality
         search = request.GET.get('search', '')
         if search:
             courses = courses.filter(
@@ -373,29 +373,24 @@ def courses_by_category(request):
                 Q(tags__icontains=search)
             )
         
-        # Filter by level
         level = request.GET.get('level', '')
         if level:
             courses = courses.filter(level=level)
         
-        # Filter by language
         language = request.GET.get('language', '')
         if language:
             courses = courses.filter(language=language)
         
-        # Filter by price
         price_filter = request.GET.get('price', '')
         if price_filter == 'free':
             courses = courses.filter(is_free=True)
         elif price_filter == 'paid':
             courses = courses.filter(is_free=False)
         
-        # Filter by teacher
         teacher_id = request.GET.get('teacher', '')
         if teacher_id:
             courses = courses.filter(teacher_id=teacher_id)
         
-        # Sorting
         sort_by = request.GET.get('sort', '-created_at')
         
         if sort_by == 'popular':
@@ -408,7 +403,7 @@ def courses_by_category(request):
         elif sort_by == 'rating':
             try:
                 courses = courses.annotate(
-                    avg_rating=models.Avg('reviews__rating')
+                    avg_rating=Avg('reviews__rating')
                 ).order_by('-avg_rating')
             except Exception:
                 courses = courses.order_by('-created_at')
@@ -419,7 +414,6 @@ def courses_by_category(request):
         else:
             courses = courses.order_by(sort_by)
         
-        # Prepare response data
         categories_data = []
         for cat in categories:
             categories_data.append({
@@ -429,18 +423,15 @@ def courses_by_category(request):
                 'description': cat.description
             })
         
-        # Pagination
         paginator = CoursesPagination()
         paginated_courses = paginator.paginate_queryset(courses, request)
         
-        # Serialize courses
         serializer = CourseListSerializer(
             paginated_courses,
             many=True,
             context={'request': request}
         )
         
-        # Build response
         response_data = {
             'categories': categories_data,
             'courses': serializer.data,
@@ -470,6 +461,7 @@ def courses_by_category(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+
 @extend_schema(
     methods=['GET'],
     summary='Get course details',
@@ -491,22 +483,20 @@ def courses_by_category(request):
 )
 @api_view(['GET', 'PUT', 'DELETE'])
 @permission_classes([permissions.AllowAny])
-def course_detail(request, slug):
+def course_detail(request, id):
     """
     GET: Get course details (Public)
     PUT: Update course (teacher only)
     DELETE: Delete course (teacher only)
     """
-    course = get_object_or_404(Course, title=slug)
+    course = get_object_or_404(Course, id=id)
 
     if request.method == 'GET':
-        # Anyone can view published courses
         if course.is_published:
             serializer = CourseDetailSerializer(
                 course, context={'request': request})
             return Response(serializer.data)
         else:
-            # Unpublished courses only accessible by teacher
             if not request.user or not request.user.is_authenticated or course.teacher != request.user:
                 return Response(
                     {'error': 'Course not found'},
@@ -517,7 +507,6 @@ def course_detail(request, slug):
             return Response(serializer.data)
 
     elif request.method == 'PUT':
-        # PUT requires authentication
         if not request.user or not request.user.is_authenticated:
             return Response(
                 {'detail': 'Authentication credentials were not provided.'},
@@ -545,7 +534,6 @@ def course_detail(request, slug):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     elif request.method == 'DELETE':
-        # DELETE requires authentication
         if not request.user or not request.user.is_authenticated:
             return Response(
                 {'detail': 'Authentication credentials were not provided.'},
@@ -588,7 +576,6 @@ def course_reviews(request, course_id):
     course = get_object_or_404(Course, id=course_id)
 
     if request.method == 'GET':
-        # GET is public - no authentication required
         reviews = CourseReview.objects.filter(course=course, is_published=True)
         paginator = CoursesPagination()
         paginated_reviews = paginator.paginate_queryset(reviews, request)
@@ -596,14 +583,12 @@ def course_reviews(request, course_id):
         return paginator.get_paginated_response(serializer.data)
 
     elif request.method == 'POST':
-        # POST requires authentication
         if not request.user or not request.user.is_authenticated:
             return Response(
                 {'detail': 'Authentication credentials were not provided.'},
                 status=status.HTTP_401_UNAUTHORIZED
             )
         
-        # Check if user is enrolled
         if not CourseEnrollment.objects.filter(
             student=request.user,
             course=course,
@@ -614,7 +599,6 @@ def course_reviews(request, course_id):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # Check if already reviewed
         if CourseReview.objects.filter(student=request.user, course=course).exists():
             return Response(
                 {'error': 'You have already reviewed this course'},
@@ -657,7 +641,6 @@ def course_modules(request, course_id):
     course = get_object_or_404(Course, id=course_id)
 
     if request.method == 'GET':
-        # Public access for published courses
         if course.is_published:
             modules = CourseModule.objects.filter(
                 course=course, is_published=True)
@@ -665,7 +648,6 @@ def course_modules(request, course_id):
                 modules, many=True, context={'request': request})
             return Response(serializer.data)
         else:
-            # For unpublished courses, check if user is teacher or enrolled
             if not request.user or not request.user.is_authenticated:
                 return Response(
                     {'detail': 'Authentication credentials were not provided.'},
@@ -678,7 +660,6 @@ def course_modules(request, course_id):
                     modules, many=True, context={'request': request})
                 return Response(serializer.data)
 
-            # Check if user is enrolled
             if CourseEnrollment.objects.filter(
                 student=request.user,
                 course=course,
@@ -696,7 +677,6 @@ def course_modules(request, course_id):
             )
 
     elif request.method == 'POST':
-        # POST requires authentication
         if not request.user or not request.user.is_authenticated:
             return Response(
                 {'detail': 'Authentication credentials were not provided.'},
@@ -750,13 +730,11 @@ def module_detail(request, module_id):
     module = get_object_or_404(CourseModule, id=module_id)
 
     if request.method == 'GET':
-        # Public access if course and module are published
         if module.course.is_published and module.is_published:
             serializer = CourseModuleSerializer(
                 module, context={'request': request})
             return Response(serializer.data)
         else:
-            # Check access permissions
             if not request.user or not request.user.is_authenticated:
                 return Response(
                     {'detail': 'Authentication credentials were not provided.'},
@@ -768,7 +746,6 @@ def module_detail(request, module_id):
                     module, context={'request': request})
                 return Response(serializer.data)
 
-            # Check if user is enrolled
             if CourseEnrollment.objects.filter(
                 student=request.user,
                 course=module.course,
@@ -784,7 +761,6 @@ def module_detail(request, module_id):
             )
 
     elif request.method == 'PUT':
-        # PUT requires authentication
         if not request.user or not request.user.is_authenticated:
             return Response(
                 {'detail': 'Authentication credentials were not provided.'},
@@ -811,7 +787,6 @@ def module_detail(request, module_id):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     elif request.method == 'DELETE':
-        # DELETE requires authentication
         if not request.user or not request.user.is_authenticated:
             return Response(
                 {'detail': 'Authentication credentials were not provided.'},
@@ -854,14 +829,12 @@ def module_lessons(request, module_id):
     module = get_object_or_404(CourseModule, id=module_id)
 
     if request.method == 'GET':
-        # Public access if course and module are published
         if module.course.is_published and module.is_published:
             lessons = Lesson.objects.filter(module=module, is_published=True)
             serializer = LessonSerializer(
                 lessons, many=True, context={'request': request})
             return Response(serializer.data)
         else:
-            # Check access permissions
             if not request.user or not request.user.is_authenticated:
                 return Response(
                     {'detail': 'Authentication credentials were not provided.'},
@@ -874,7 +847,6 @@ def module_lessons(request, module_id):
                     lessons, many=True, context={'request': request})
                 return Response(serializer.data)
 
-            # Check if user is enrolled
             if CourseEnrollment.objects.filter(
                 student=request.user,
                 course=module.course,
@@ -892,7 +864,6 @@ def module_lessons(request, module_id):
             )
 
     elif request.method == 'POST':
-        # POST requires authentication
         if not request.user or not request.user.is_authenticated:
             return Response(
                 {'detail': 'Authentication credentials were not provided.'},
@@ -934,14 +905,12 @@ def enroll_course(request, course_id):
             status=status.HTTP_403_FORBIDDEN
         )
     
-    # Check if already enrolled
     if CourseEnrollment.objects.filter(student=request.user, course=course).exists():
         return Response(
             {'error': 'Already enrolled in this course'}, 
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    # Check if course is full
     if course.is_full:
         return Response(
             {'error': 'Course is full'}, 
@@ -1047,7 +1016,6 @@ def update_lesson_progress(request, lesson_id):
     """Update lesson progress"""
     lesson = get_object_or_404(Lesson, id=lesson_id)
 
-    # Check if user is enrolled in the course
     if not CourseEnrollment.objects.filter(
         student=request.user,
         course=lesson.module.course,
@@ -1063,7 +1031,6 @@ def update_lesson_progress(request, lesson_id):
         lesson=lesson
     )
 
-    # Update progress
     completion_percentage = request.data.get(
         'completion_percentage', progress.completion_percentage)
     time_spent = request.data.get('time_spent_minutes', 0)
@@ -1078,13 +1045,11 @@ def update_lesson_progress(request, lesson_id):
 
     progress.save()
 
-    # Update course enrollment progress
     enrollment = CourseEnrollment.objects.get(
         student=request.user,
         course=lesson.module.course
     )
 
-    # Calculate overall course progress
     total_lessons = Lesson.objects.filter(
         module__course=lesson.module.course).count()
     completed_lessons = LessonProgress.objects.filter(
@@ -1103,3 +1068,68 @@ def update_lesson_progress(request, lesson_id):
 
     serializer = LessonProgressSerializer(progress)
     return Response(serializer.data)
+
+
+# ============ CONTACT SUPPORT VIEW ============
+
+@extend_schema(
+    summary='Contact Support',
+    description='Send a message to support team',
+    request=ContactSupportSerializer,
+    responses={
+        200: {'description': 'Message sent successfully'},
+        400: {'description': 'Invalid data'},
+        500: {'description': 'Failed to send message'}
+    }
+)
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def contact_support(request):
+    """
+    POST: Send a contact message to support team
+    """
+    serializer = ContactSupportSerializer(data=request.data)
+    
+    if serializer.is_valid():
+        name = serializer.validated_data['name']
+        email = serializer.validated_data['email']
+        message = serializer.validated_data['message']
+        
+        # Hardcoded admin email (change this to your actual admin email)
+        admin_email = 'admin@example.com'
+        
+        subject = f"Contact Support Message from {name}"
+        email_body = f"""
+        New contact support message:
+        
+        Name: {name}
+        Email: {email}
+        
+        Message:
+        {message}
+        
+        ---
+        Sent via LMS Contact Support
+        """
+        
+        try:
+            send_mail(
+                subject=subject,
+                message=email_body,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[admin_email],
+                fail_silently=False,
+            )
+            
+            return Response(
+                {'message': 'Your message has been sent successfully. We will get back to you soon.'},
+                status=status.HTTP_200_OK
+            )
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to send message: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

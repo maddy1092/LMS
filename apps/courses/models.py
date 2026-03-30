@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from django.utils.text import slugify
 from apps.core.models import BaseModel
+from django.utils.text import slugify
 
 User = get_user_model()
 
@@ -197,3 +198,20 @@ class CourseReview(models.Model):
     
     def __str__(self):
         return f"{self.course.title} - {self.rating} stars by {self.student.email}"
+
+
+class Tag(BaseModel):
+    """Tag model for courses and blogs"""
+    name = models.CharField(max_length=50, unique=True)
+    slug = models.SlugField(max_length=60, unique=True, blank=True)
+    
+    class Meta:
+        ordering = ['name']
+    
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return self.name

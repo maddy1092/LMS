@@ -9,16 +9,22 @@ from .models import (
 
 User = get_user_model()
 
+
+# ============ CATEGORY SERIALIZERS ============
+
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
-        fields = ['id', 'title', 'icon_src', 'description', 'is_active']
+        fields = ['id', 'title', 'icon_src', 'description', 'is_active', 'created_at', 'updated_at']
+
 
 class CategoryCreateUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
         fields = ['title', 'icon_src', 'description', 'is_active']
 
+
+# ============ TEACHER SERIALIZER ============
 
 class TeacherSerializer(serializers.ModelSerializer):
     profile = serializers.SerializerMethodField()
@@ -39,10 +45,62 @@ class TeacherSerializer(serializers.ModelSerializer):
             return {}
 
 
+# ============ LESSON SERIALIZERS ============
+
+class LessonSerializer(serializers.ModelSerializer):
+    is_completed = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Lesson
+        fields = [
+            'id', 'title', 'description', 'lesson_type', 'content',
+            'video_url', 'duration_minutes', 'order', 'is_free_preview',
+            'is_completed', 'is_published', 'created_at', 'updated_at'
+        ]
+    
+    def get_is_completed(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            try:
+                progress = LessonProgress.objects.get(student=request.user, lesson=obj)
+                return progress.is_completed
+            except LessonProgress.DoesNotExist:
+                return False
+        return False
+
+
+class LessonCreateUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Lesson
+        fields = [
+            'title', 'description', 'lesson_type', 'content',
+            'video_url', 'duration_minutes', 'order', 'is_published',
+            'is_free_preview'
+        ]
+
+
+# ============ MODULE SERIALIZERS ============
+
+class CourseModuleSerializer(serializers.ModelSerializer):
+    lessons = LessonSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = CourseModule
+        fields = ['id', 'title', 'order', 'description', 
+                 'is_published', 'created_at', 'updated_at', 'lessons']
+
+
+class CourseModuleCreateUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CourseModule
+        fields = ['title', 'description', 'order', 'is_published']
+
+
+# ============ COURSE LIST SERIALIZER ============
+
 class CourseListSerializer(serializers.ModelSerializer):
     teacher = TeacherSerializer(read_only=True)
     teacher_name = serializers.SerializerMethodField()
-    # enrolled_count = serializers.SerializerMethodField()
     average_rating = serializers.SerializerMethodField()
     is_enrolled = serializers.SerializerMethodField()
     categories = CategorySerializer(many=True, read_only=True)
@@ -52,7 +110,9 @@ class CourseListSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False
     )
-
+    modules = CourseModuleSerializer(many=True, read_only=True)
+    total_lessons_duration_minutes = serializers.SerializerMethodField()
+    total_lessons_duration_hours = serializers.SerializerMethodField()
     
     class Meta:
         model = Course
@@ -60,19 +120,11 @@ class CourseListSerializer(serializers.ModelSerializer):
             'id', 'title', 'slug', 'description', 'teacher', 'teacher_name', 'language',
             'price', 'currency', 'is_free', 'thumbnail_url', 'level',
             'duration_hours', 'categories', 'category_ids', 'average_rating',
-            'is_enrolled', 'created_at', 'is_published', 'tags'
+            'is_enrolled', 'created_at', 'is_published', 'tags', 'modules', 
+            'total_lessons_duration_minutes', 'total_lessons_duration_hours',
         ]
     
-    def get_enrolled_count(self, obj):
-        """Get count of active enrollments"""
-        try:
-            # Direct database query, not using model property
-            return obj.course_enrollments.filter(is_active=True).count()
-        except Exception:
-            return 0
-    
     def get_average_rating(self, obj):
-        """Calculate average rating for the course"""
         try:
             result = obj.reviews.filter(is_published=True).aggregate(
                 average=Avg('rating')
@@ -85,7 +137,6 @@ class CourseListSerializer(serializers.ModelSerializer):
             return 0.0
     
     def get_is_enrolled(self, obj):
-        """Check if current user is enrolled in this course"""
         request = self.context.get('request')
         if request and request.user.is_authenticated:
             try:
@@ -98,7 +149,6 @@ class CourseListSerializer(serializers.ModelSerializer):
         return False
     
     def get_teacher_name(self, obj):
-        """Get teacher's full name"""
         if obj.teacher:
             try:
                 profile = UserProfile.objects.get(user=obj.teacher)
@@ -109,48 +159,37 @@ class CourseListSerializer(serializers.ModelSerializer):
                 pass
         return obj.teacher.email if obj.teacher else ""
 
+    def get_total_lessons_duration_minutes(self, obj):
+        if hasattr(obj, 'modules'):
+            total = 0
+            for module in obj.modules.all():
+                if module.is_published:
+                    for lesson in module.lessons.all():
+                        if lesson.is_published:
+                            total += lesson.duration_minutes or 0
+            return total
+        return 0
 
-class LessonSerializer(serializers.ModelSerializer):
-    is_completed = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = Lesson
-        fields = [
-            'id', 'title', 'description', 'lesson_type', 'content',
-            'video_url', 'duration_minutes', 'order', 'is_free_preview',
-            'is_completed', 'is_published'
-        ]
-    
-    def get_is_completed(self, obj):
-        """Check if current user has completed this lesson"""
-        request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            try:
-                progress = LessonProgress.objects.get(student=request.user, lesson=obj)
-                return progress.is_completed
-            except LessonProgress.DoesNotExist:
-                return False
-        return False
+    def get_total_lessons_duration_hours(self, obj):
+        minutes = self.get_total_lessons_duration_minutes(obj)
+        if minutes:
+            return round(minutes / 60, 1)
+        return 0
 
 
-class CourseModuleSerializer(serializers.ModelSerializer):
-    lessons = LessonSerializer(many=True, read_only=True)
-    
-    class Meta:
-        model = CourseModule
-        fields = ['id', 'title', 'description', 'order', 'lessons', 'is_published']
-
+# ============ COURSE DETAIL SERIALIZER ============
 
 class CourseDetailSerializer(serializers.ModelSerializer):
     teacher = TeacherSerializer(read_only=True)
     modules = CourseModuleSerializer(many=True, read_only=True)
     teacher_name = serializers.SerializerMethodField()
-    # enrolled_count = serializers.SerializerMethodField()
     average_rating = serializers.SerializerMethodField()
     reviews_count = serializers.SerializerMethodField()
     is_enrolled = serializers.SerializerMethodField()
     enrollment_status = serializers.SerializerMethodField()
     categories = CategorySerializer(many=True, read_only=True)
+    total_lessons_duration_minutes = serializers.SerializerMethodField()
+    total_lessons_duration_hours = serializers.SerializerMethodField()
     
     class Meta:
         model = Course
@@ -158,21 +197,13 @@ class CourseDetailSerializer(serializers.ModelSerializer):
             'id', 'title', 'slug', 'description', 'teacher', 'teacher_name', 'language',
             'price', 'currency', 'is_free', 'thumbnail_url', 'level',
             'duration_hours', 'max_students', 'prerequisites', 'learning_objectives',
-            # 'category', 'tags', 'enrolled_count', 'average_rating', 'reviews_count',
             'categories', 'tags', 'average_rating', 'reviews_count',
             'is_enrolled', 'enrollment_status', 'modules',
-            'created_at', 'updated_at', 'is_published',
+            'created_at', 'updated_at', 'is_published', 
+            'total_lessons_duration_minutes', 'total_lessons_duration_hours',
         ]
     
-    def get_enrolled_count(self, obj):
-        """Get count of active enrollments"""
-        try:
-            return obj.course_enrollments.filter(is_active=True).count()
-        except Exception:
-            return 0
-    
     def get_average_rating(self, obj):
-        """Calculate average rating for the course"""
         try:
             result = obj.reviews.filter(is_published=True).aggregate(
                 average=Avg('rating')
@@ -185,14 +216,12 @@ class CourseDetailSerializer(serializers.ModelSerializer):
             return 0.0
     
     def get_reviews_count(self, obj):
-        """Get count of published reviews"""
         try:
             return obj.reviews.filter(is_published=True).count()
         except Exception:
             return 0
     
     def get_is_enrolled(self, obj):
-        """Check if current user is enrolled in this course"""
         request = self.context.get('request')
         if request and request.user.is_authenticated:
             try:
@@ -205,7 +234,6 @@ class CourseDetailSerializer(serializers.ModelSerializer):
         return False
     
     def get_enrollment_status(self, obj):
-        """Get enrollment details for current user"""
         request = self.context.get('request')
         if request and request.user.is_authenticated:
             try:
@@ -221,7 +249,6 @@ class CourseDetailSerializer(serializers.ModelSerializer):
         return None
     
     def get_teacher_name(self, obj):
-        """Get teacher's full name"""
         if obj.teacher:
             try:
                 profile = UserProfile.objects.get(user=obj.teacher)
@@ -232,9 +259,28 @@ class CourseDetailSerializer(serializers.ModelSerializer):
                 pass
         return obj.teacher.email if obj.teacher else ""
 
+    def get_total_lessons_duration_minutes(self, obj):
+        if hasattr(obj, 'modules'):
+            total = 0
+            for module in obj.modules.all():
+                if module.is_published:
+                    for lesson in module.lessons.all():
+                        if lesson.is_published:
+                            total += lesson.duration_minutes or 0
+            return total
+        return 0
+
+    def get_total_lessons_duration_hours(self, obj):
+        minutes = self.get_total_lessons_duration_minutes(obj)
+        if minutes:
+            return round(minutes / 60, 1)
+        return 0
+
+
+# ============ COURSE CREATE/UPDATE SERIALIZER ============
 
 class CourseCreateUpdateSerializer(serializers.ModelSerializer):
-    category_ids = serializers.PrimaryKeyRelatedField(  # Changed from 'category'
+    category_ids = serializers.PrimaryKeyRelatedField(
         queryset=Category.objects.filter(is_active=True),
         many=True,
         write_only=True,
@@ -247,7 +293,7 @@ class CourseCreateUpdateSerializer(serializers.ModelSerializer):
             'title', 'description', 'language', 'price', 'currency',
             'is_free', 'thumbnail_url', 'level', 'duration_hours',
             'max_students', 'prerequisites', 'learning_objectives',
-            'category_ids', 'tags', 'is_published'  # Changed from 'category'
+            'category_ids', 'tags', 'is_published'
         ]
     
     def create(self, validated_data):
@@ -255,7 +301,7 @@ class CourseCreateUpdateSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         validated_data['teacher'] = request.user
         course = super().create(validated_data)
-        course.categories.set(category_ids)  # Changed from categories
+        course.categories.set(category_ids)
         return course
     
     def update(self, instance, validated_data):
@@ -265,6 +311,8 @@ class CourseCreateUpdateSerializer(serializers.ModelSerializer):
             course.categories.set(category_ids)
         return course
 
+
+# ============ ENROLLMENT SERIALIZER ============
 
 class CourseEnrollmentSerializer(serializers.ModelSerializer):
     course = CourseListSerializer(read_only=True)
@@ -277,6 +325,8 @@ class CourseEnrollmentSerializer(serializers.ModelSerializer):
             'progress_percentage', 'completed_at', 'is_active'
         ]
 
+
+# ============ REVIEW SERIALIZERS ============
 
 class CourseReviewSerializer(serializers.ModelSerializer):
     student = serializers.SerializerMethodField()
@@ -329,6 +379,8 @@ class CourseReviewCreateSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
+# ============ PROGRESS SERIALIZER ============
+
 class LessonProgressSerializer(serializers.ModelSerializer):
     lesson = LessonSerializer(read_only=True)
     
@@ -340,17 +392,14 @@ class LessonProgressSerializer(serializers.ModelSerializer):
         ]
 
 
-class CourseModuleCreateUpdateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = CourseModule
-        fields = ['title', 'description', 'order', 'is_published']
+# ============ CONTACT SUPPORT SERIALIZER ============
 
-
-class LessonCreateUpdateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Lesson
-        fields = [
-            'title', 'description', 'lesson_type', 'content',
-            'video_url', 'duration_minutes', 'order', 'is_published',
-            'is_free_preview'
-        ]
+class ContactSupportSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=100)
+    email = serializers.EmailField()
+    message = serializers.CharField(max_length=2000)
+    
+    def validate_message(self, value):
+        if len(value.strip()) < 10:
+            raise serializers.ValidationError("Message must be at least 10 characters long")
+        return value
