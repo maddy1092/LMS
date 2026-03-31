@@ -208,7 +208,7 @@ def forgot_password(request):
         reset_token = PasswordResetToken.objects.create(user=user)
         
         # Send email
-        reset_url = f"http://localhost:3000/reset-password?token={reset_token.token}"
+        reset_url = f"https://lms-alpha-sable-34.vercel.app?token={reset_token.token}"
         send_mail(
             'Password Reset Request',
             f'Click here to reset your password: {reset_url}',
