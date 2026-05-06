@@ -2,16 +2,10 @@ import os
 from pathlib import Path
 from decouple import config
 import sys
-import pymysql
 from datetime import timedelta
 import dj_database_url
 
-# Configure PyMySQL to work with Django
-pymysql.install_as_MySQLdb()
-
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-DATABASE_URL = os.getenv('DATABASE_URL')
 
 CSRF_TRUSTED_ORIGINS = [
     "https://lms-production-26e3.up.railway.app",
@@ -90,32 +84,31 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.mysql',
-#         'NAME': config('DB_NAME', default='LMS'),
-#         'USER': config('DB_USER', default='root'),
-#         'PASSWORD': config('DB_PASSWORD', default=''),
-#         'HOST': config('DB_HOST', default='localhost'),
-#         'PORT': config('DB_PORT', default='3306'),
-#         'OPTIONS': {
-#             'charset': 'utf8mb4',
-#             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-#             'ssl_disabled': True,
-#         },
-#         'CONN_MAX_AGE': 60,
-#     }
-# }
-# Database configuration
-DATABASES = {
-    "default": dj_database_url.parse(
-        config("DATABASE_URL"),
-        engine="django.db.backends.mysql",
-        conn_max_age=600,
-    )
-}
+# Database configuration - PostgreSQL for production
+DATABASE_URL = config('DATABASE_URL', default='')
 
-
+if DATABASE_URL:
+    # Use DATABASE_URL for production (PostgreSQL on Vercel/Railway)
+    DATABASES = {
+        "default": dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=600,
+            ssl_require=True  # PostgreSQL supports sslmode
+        )
+    }
+else:
+    # Fallback to local PostgreSQL for development
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': config('DB_NAME', default='lms_db'),
+            'USER': config('DB_USER', default='postgres'),
+            'PASSWORD': config('DB_PASSWORD', default=''),
+            'HOST': config('DB_HOST', default='localhost'),
+            'PORT': config('DB_PORT', default='5432'),
+            'CONN_MAX_AGE': 600,
+        }
+    }
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -163,6 +156,7 @@ SIMPLE_JWT = {
     'USER_ID_FIELD': 'id',
     'USER_ID_CLAIM': 'user_id',
 }
+
 CORS_ALLOW_ALL_ORIGINS = True  # For development - allows all origins
 
 # CORS_ALLOWED_ORIGINS = [
@@ -173,7 +167,6 @@ CORS_ALLOW_ALL_ORIGINS = True  # For development - allows all origins
 
 # Allow credentials if needed
 CORS_ALLOW_CREDENTIALS = True
-
 
 # Allow specific headers
 CORS_ALLOW_HEADERS = [
@@ -209,7 +202,7 @@ if not DEBUG and False:  # Temporarily disabled
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
 
-# Logging configuration
+# Logging configuration - Vercel compatible (console only)
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -218,14 +211,12 @@ LOGGING = {
             'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
             'style': '{',
         },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
     },
     'handlers': {
-        'file': {
-            'level': 'INFO',
-            'class': 'logging.FileHandler',
-            'filename': BASE_DIR / 'logs' / 'django.log',
-            'formatter': 'verbose',
-        },
         'console': {
             'level': 'DEBUG',
             'class': 'logging.StreamHandler',
@@ -233,26 +224,34 @@ LOGGING = {
         },
     },
     'root': {
-        'handlers': ['console', 'file'],
+        'handlers': ['console'],
         'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django.request': {
+            'handlers': ['console'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
     },
 }
 
-# Cache configuration
+# Cache configuration - Use dummy cache for Vercel (read-only filesystem)
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': config('REDIS_URL', default='redis://127.0.0.1:6379/1'),
+        'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
     }
 }
 
-# Celery configuration
-CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://127.0.0.1:6379/0')
-CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='redis://127.0.0.1:6379/0')
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = TIME_ZONE
+# Celery configuration - Disabled for Vercel (use background tasks instead)
+CELERY_TASK_ALWAYS_EAGER = True  # Run tasks synchronously
+CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='')
+CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='')
 
 # Email configuration
 EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')
