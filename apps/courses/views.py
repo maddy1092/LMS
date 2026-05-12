@@ -890,13 +890,13 @@ def module_lessons(request, module_id):
 
 @extend_schema(
     summary='Enroll in course',
-    description='Enroll in a course (Students only)',
-    responses={201: CourseEnrollmentSerializer}
+    description='Enroll in a course (Students only). For paid courses, enrollment happens via Stripe webhook after successful payment.',
+    responses={201: CourseEnrollmentSerializer, 400: 'Bad request', 402: 'Payment required'}
 )
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def enroll_course(request, course_id):
-    """Enroll in a course"""
+    """Enroll in a course. If course is free, enroll immediately. If paid, inform client to use payment flow."""
     course = get_object_or_404(Course, id=course_id, is_published=True)
     
     if not is_student(request.user):
@@ -905,7 +905,7 @@ def enroll_course(request, course_id):
             status=status.HTTP_403_FORBIDDEN
         )
     
-    if CourseEnrollment.objects.filter(student=request.user, course=course).exists():
+    if CourseEnrollment.objects.filter(student=request.user, course=course, is_active=True).exists():
         return Response(
             {'error': 'Already enrolled in this course'}, 
             status=status.HTTP_400_BAD_REQUEST
@@ -917,14 +917,18 @@ def enroll_course(request, course_id):
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    enrollment = CourseEnrollment.objects.create(
-        student=request.user,
-        course=course
-    )
+    if course.is_free:
+        enrollment = CourseEnrollment.objects.create(
+            student=request.user,
+            course=course
+        )
+        serializer = CourseEnrollmentSerializer(enrollment)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
     
-    serializer = CourseEnrollmentSerializer(enrollment)
-    return Response(serializer.data, status=status.HTTP_201_CREATED)
-
+    return Response(
+        {'error': 'This is a paid course. Please create a payment intent via /api/payments/create-payment-intent/ first.'},
+        status=status.HTTP_402_PAYMENT_REQUIRED
+    )
 
 @extend_schema(
     summary='Unenroll from course',
